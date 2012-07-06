@@ -1,0 +1,67 @@
+;; Ken's swarming
+;; takes a while to fill in position buffer
+;;   proto -n 70 -c -DD hexgrid -T -sv "(polar-to-rect (tup 5 (servo-pos (elt (swarm) 2))))"
+;; DEBUGGING
+;; Show the position
+;;   proto -n 70 -c -DD hexgrid -T -v -f "(1st (swarm))"
+;; Show the velocity
+;;   proto -n 70 -c -DD hexgrid -T -v -f "(2nd (swarm))"
+;; Show the heading
+;;   proto -n 70 -c -DD hexgrid -T -v -f "(elt (swarm) 2)"
+;; Show the history
+;;   proto -n 70 -c -DD hexgrid -T -v -f "(elt (swarm) 3)"
+
+;; converts a swarm heading to a servo position
+(def servo-pos (hd) 
+	(- (* (/ (pi) 2) (cos hd))  (/ (pi) 2)))
+	
+;; proto expects spatial vectors to be 3d, so the virtual space is 3d
+(def swarm ()
+(let ((ld 20) ;; virtual distance between the nodes
+	  (dt 0.05) ;; time step for difference equation
+	  (acc 10) ;; self-propelling force
+	  (gmma 5) ;; viscosity
+	  (ka -0.1) ;; spring constant
+	  (d 0.5) ;; strength of anisotropy
+	  (cf 100) ;; strength of interaction with neighbors
+	  (rc 20) ;; optimum distance between agents
+	  (tau 1)) ;; relaxation time of heading dynamics
+  		(rep state
+	   		(tup (tup 0 0 0) (tup 1 1 0) (/ (pi) 2)
+	   		(tup (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0)
+	   		(tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0)))
+   	 		(let* ((p (elt state 0))
+   	 		  (v (elt state 1))
+   	 		  (hd (elt state 2))
+   	 		  (p-hist (elt state 3))
+   	 		  (hd-norm-rect (polar-to-rect (tup 1 hd)))
+   	 		  (hd-norm-rect-3d (tup (1st hd-norm-rect) (2nd hd-norm-rect) 0))
+			  (self-propel-force (- (* acc hd-norm-rect-3d) (* gmma v)))
+			  (interaction-force 
+			  	(sum-hood 
+			  		(let* ((dis 
+			  				(- (+ (nbr (elt p-hist 9)) (* ld (normalize (nbr-vec)))) p))
+			  	    	   	(vlen-dis (vlen dis)))
+			  	    	   	(if (< 0 vlen-dis)
+			  			   		(let* ((alph 
+			  			   				(+ 1 
+			  			   				 (* d (/ (vdot dis hd-norm-rect-3d) vlen-dis))))
+			  			   			(f (/ (* cf (- 1 (/ rc vlen-dis)) rc rc) 
+			  			   				(* vlen-dis vlen-dis))))
+			  			   			(* (/ alph vlen-dis) f dis))
+			  			   		(tup 0 0 0)))))
+			  (center-force (* ka p))
+			  (force (+ self-propel-force interaction-force center-force))
+			  (ds (if (< 0 (vlen v))
+			  	(/ 
+			  	 (vdot (normalize v) (tup (- 0 (2nd hd-norm-rect)) (1st hd-norm-rect) 0)) 
+			  	 tau)
+			  	 0))
+			  (dv (* dt force)))
+			  (tup 
+			  	(+ p v dv)
+			  	(+ v dv) 
+			  	(2nd (rect-to-polar (polar-to-rect (tup 1 (+ hd (* ds dt))))))
+			  	(tup (+ p v dv) (elt p-hist 0) (elt p-hist 1) (elt p-hist 2) 
+			  		(elt p-hist 3) (elt p-hist 4) (elt p-hist 5) 
+			  		(elt p-hist 6) (elt p-hist 7) (elt p-hist 8)))))))
