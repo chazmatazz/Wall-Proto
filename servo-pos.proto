@@ -1,0 +1,6 @@
+;; for use in the simulator
+;; TODO make OPCODE
+
+;; set the servo position
+(def servo-pos (n a) 
+	(polar-to-rect (tup 5 (- a (/ (pi) 2)))))

@@ -1,0 +1,3 @@
+;; return port number, hex layout, 0 is down
+(def port-number (a)
+	(mod (floor (/ (toDegrees (+ a (* (pi) (/ 2 3)))) 60)) 6))

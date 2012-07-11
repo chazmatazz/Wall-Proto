@@ -1,0 +1,5 @@
+;; for use in the simulator
+;; TODO make OPCODE
+
+;; does the device have sonar
+(def has-sonar () (not (any-hood (= 0 (port-number (nbr-angle))))))

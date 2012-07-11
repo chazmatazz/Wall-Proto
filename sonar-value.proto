@@ -1,0 +1,5 @@
+;; for use in the simulator
+;; TODO make OPCODE
+
+;; the value of the sonar
+(def sonar-value () (rnd 0 400))

@@ -1,0 +1,3 @@
+;; is bottom left in hex layout
+(def is-bottom-left () 
+	(all-hood (or (= 2 (port-number (nbr-angle))) (= 3 (port-number (nbr-angle))))))
