@@ -1,22 +1,28 @@
 ;; Wall swarming
-;; proto -n 70 -c -DD hexgrid -T -l -sv "(all (red (is-bottom-left)) (blue (has-sonar)) (wall (tup 150 210 270 300 360 420 480 570 630)))"
-
+;; proto -n 70 -c -DD hexgrid -T -l -sv "(wall (tup 150 210 270 300 360 420 480 570 630))"
+;; fm
+;; proto -n 70 -c -DD hexgrid -T -l -sv "(wall (tup 0 100 100 100 100 100 100 100 200))"
 ;;;;;;;;;;;;;;;; helper functions ;;;;;;;;;;;;;;;;
-;; running triple sum
-(def running-triple-sum (v) 
+
+(def 4th (t) (elt t 3))
+
+;; running sum
+(def running-sum (s v) 
 	(3rd 
-		(rep state (tup 0 2 0)
-		(let* ((running-sum (elt state 0))
-		  (running-idx (elt state 1))
-		  (last-sum (elt state 2))
+		(rep state (tup 0 (- s 1) 0)
+		(let* ((running-sum (1st state))
+		  (running-idx (2nd state))
+		  (last-sum (3rd state))
 		  (next-running-idx (+ running-idx 1)))
-		  (if (= next-running-idx 3) (tup v 0 running-sum)
+		  (if (= next-running-idx s) (tup v 0 running-sum)
 		  	(tup (+ v running-sum) next-running-idx last-sum))))))
 
-;; heartbeat every 300ms
-(def heartbeat-300ms (t)
-	(= t (rep last-t (neg (inf)) (if (> t (+ last-t 300)) t last-t))))
+(def transmit (radius) 
+	(rep r 0 (max radius (max-hood+ (- (nbr r) 1)))))
 
+(def normalize-angle (a) 
+	(2nd (rect-to-polar (polar-to-rect (tup 1 a)))))
+	
 ;;;;;;;;;;;;;;;; constants ;;;;;;;;;;;;;;
 
 ;; sonar thresholds
@@ -31,7 +37,7 @@
 ;; swarming on 6-way communication
 ;;
 ;; ld: virtual distance between the nodes
-;; dt: time step for difference equation
+;; d-t: time step for difference equation
 ;; acc: self-propelling force
 ;; gmma: viscosity
 ;; ka: negative spring constant
@@ -42,22 +48,20 @@
 ;;
 ;; proto expects spatial vectors to be 3d, so the virtual space is 3d
 ;;
-(def swarm (ld dt acc gmma ka d cf rc tau)
-	(rep state
-	   		(tup (tup 0 0 0) (tup 1 1 0) (/ (pi) 2)
-	   		(tup (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0)
-	   		(tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0) (tup 0 0 0)))
-   	 		(let* ((p (elt state 0))
-   	 		  (v (elt state 1))
-   	 		  (hd (elt state 2))
-   	 		  (p-hist (elt state 3))
+(def swarm (is-reset init-state ld d-t acc gmma ka d cf rc tau)
+	(rep state init-state
+   	 		(if is-reset 
+   	 			init-state 
+   	 			(let* ((p (1st state))
+   	 		  (v (2nd state))
+   	 		  (hd (3rd state))
    	 		  (hd-norm-rect (polar-to-rect (tup 1 hd)))
    	 		  (hd-norm-rect-3d (tup (1st hd-norm-rect) (2nd hd-norm-rect) 0))
 			  (self-propel-force (- (* acc hd-norm-rect-3d) (* gmma v)))
 			  (interaction-force 
 			  	(sum-hood 
 			  		(let* ((dis 
-			  				(- (+ (nbr (elt p-hist 9)) (* ld (normalize (nbr-vec)))) p))
+			  				(- (+ (nbr p) (* ld (normalize (nbr-vec)))) p))
 			  	    	   	(vlen-dis (vlen dis)))
 			  	    	   	(if (< 0 vlen-dis)
 			  			   		(let* ((alph 
@@ -74,70 +78,188 @@
 			  	 (vdot (normalize v) (tup (- 0 (2nd hd-norm-rect)) (1st hd-norm-rect) 0)) 
 			  	 tau)
 			  	 0))
-			  (dv (* dt force)))
+			  (dv (* d-t force)))
 			  (tup 
 			  	(+ p v dv)
 			  	(+ v dv)
-			  	(2nd (rect-to-polar (polar-to-rect (tup 1 (+ hd (* ds dt))))))
-			  	(tup (+ p v dv) (elt p-hist 0) (elt p-hist 1) (elt p-hist 2) 
-			  		(elt p-hist 3) (elt p-hist 4) (elt p-hist 5) 
-			  		(elt p-hist 6) (elt p-hist 7) (elt p-hist 8))))))
+			  	(normalize-angle (+ hd (* ds d-t))))))))
 
+;; init state disordered
+(def init-state-d ()
+	(tup (tup 22 40 0) (tup 0.186 -4.8 0) 4.75))
+	   	
+;; init state synchronized (no use-sonar)
+(def init-state-s ()
+	(tup (tup 2.7 75.6 0) (tup 3.8 1.3 0) 0))
+	   	
 ;; swarm-disordered
-(def swarm-disordered () 
-	(swarm 20 0.01 20 1 1 1 100 25 0.1))
+(def swarm-disordered (is-reset init-state) 
+	(swarm is-reset init-state 20 0.01 20 1 1 1 100 25 0.1))
 
 ;; swarm-synchronized
-(def swarm-synchronized () 
-	(swarm 20 0.01 20 5 0.1 0 100 20 1))
+(def swarm-synchronized (is-reset init-state) 
+	(swarm is-reset init-state 20 0.01 20 5 0.1 0 100 20 1))
 
 ;; the actual algorithm used
-(def sync-disorder (mod-sync-t end-t use-sonar s-3 h-300)
-	(let* ((range-1 (1st (sonar-thresholds)))
+(def sync-disorder (is-reset mod-sync-t end-t use-sonar s-3 h-300 h-1000)
+	(let* ((s (swarm-synchronized is-reset (if use-sonar (init-state-d) (init-state-s))))
+		   (d (swarm-disordered is-reset (init-state-d)))
+		   (range-1 (1st (sonar-thresholds)))
 		   (range-2 (2nd (sonar-thresholds)))
 		   (range-3 (3rd (sonar-thresholds)))
-		   (is-detect (and (has-sonar) (>= s-3 range-1) (< s-3 range-3)))
-		   (is-begin (< mod-sync-t (- end-t 15)))
-		   (decay-time (rep decay-time 0 (if is-begin 0 (+ decay-time 0.05))))
-		   (amp (rep amp 0 (if is-begin (+ amp 0.005) (exp (* -0.4 decay-time)))))
-		   (check-sonar (and h-300 (has-sonar) use-sonar)))
-		   0))
-		   				
-;;;;;;;;;;;;;;;; -> other algorithms ;;;;;;;;;;;;;
+		   (is-end (>= mod-sync-t (- end-t 15)))
+		   (decay-time 
+		   		(rep decay-time 0 (if is-reset 0 (if is-end (+ decay-time 0.05) 0))))
+		   (amp (if is-end 
+		   			(exp (* -0.4 decay-time)) 
+		   			(min (rep amp 0 (if is-reset 0 (+ amp 0.005))) 1)))
+		   (transmit-radius 
+		   		(if (and (has-sonar) use-sonar (>= s-3 range-1) (< s-3 range-3)) 
+		   			(if (< s-3 range-2) 4 2) 0))
+		   (dist (rep d 0 (if is-reset 0 (if h-300 (transmit transmit-radius) d))))
+		   (sync (and h-1000 (= dist 0))))
+		   (* amp (cos (* (3rd (if sync s d)) 150)))))
 
+(def avalanche (is-reset mod-sync-t s-2 h-300 h-1000)
+	(let* ((d (swarm-disordered is-reset (init-state-d)))
+		   (range-1 (1st (sonar-thresholds)))
+		   (range-3 (3rd (sonar-thresholds)))
+		   (transmit-radius 
+		   		(if (and (has-sonar) (>= s-2 range-1) (< s-2 range-3)) (inf) 0))
+		   (dist (rep d 0 (if is-reset 0 (if h-300 (transmit transmit-radius) d))))
+		   (sync (and h-1000 (= dist 0))))
+		   (if sync 
+		   	(let ((a (cos (* (3rd d) 50)))) 
+		   		(if (< (abs a) 0.999) 0 a))
+		   	(cos (* (3rd d) 150)))))
+
+;;;;;;;;;;;;;;;; -> rhythm ;;;;;;;;;;;;;
+
+;; the pair of the port
+(def pair-port (port) (mod (+ port 3) 6))
+
+;; enumeration of possible message destinations
+(def send-none () 0)
+(def send-2-3-4 () 1)
+(def send-2 () 2)
+(def send-4 () 3)
+
+;; is a port in the specified destination set
+(def port-in-set (port send-set)
+	(if (= send-set (send-2-3-4))
+		(or (= port 2) (= port 3) (= port 4))
+		(if (= send-set (send-2))
+			(= port 2)
+			(if (= send-set (send-4))
+				(= port 4)
+				#f))))
+
+;; state is (send, x, y, a)
+
+(def get-nbr-state (is-reset p-n state)
+	(let* ((init-nbr-state (tup (send-none) 0 0 0)))
+		(rep nbr-state init-nbr-state (if is-reset init-nbr-state 
+			(if (any-hood (and 
+				(= p-n (port-number (nbr-angle)))
+				(port-in-set (pair-port p-n) (1st (nbr state)))))
+			(tup 
+		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (2nd (nbr state))))
+		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (3rd (nbr state))))
+		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (4th (nbr state)))))
+			nbr-state)))))
+
+(def rhythm (is-reset stp)
+	(let* ((init-state (tup (send-none) (if (is-bottom-left) 39 22) 40 40)))
+	(sin (4th (rep state
+		init-state
+		(if is-reset 
+			init-state 
+		   	(if (is-bottom-left) 
+		   		(let* ((y (3rd state))
+		   			   (new-y (normalize-angle (+ y stp))))
+		   			(tup (send-2-3-4) (- y 1) new-y y))
+		   		(let* ((state-0 (get-nbr-state is-reset 0 state))
+		   			   (state-2 (get-nbr-state is-reset 2 state))
+		   			   (state-4 (get-nbr-state is-reset 4 state)))
+		   			   (if (not (= 0 (1st state-0)))
+		   			   		(let ((nbr-y (3rd state-0)))
+		   			   			(tup (send-2-3-4) (- nbr-y 1) nbr-y nbr-y))
+		   			   			(if (not (= 0 (1st state-2)))
+		   			   				(let ((nbr-x (2nd state-2))) 
+		   			   					(tup (send-4) (- nbr-x 1) (3rd state) nbr-x))
+		   			   				(if (not (= 0 (1st state-4))) 
+		   			   				(let ((nbr-x (2nd state-2)))
+		   			   					(tup (send-2) (- nbr-x 1) (3rd state) nbr-x))
+					   				(tup (send-none) (2nd state) (3rd state) 0))))))))))))
+		
 ;; frequency modulation
-(def fm (t) 0)
+(def fm (is-reset mod-sync-t)
+	(rhythm is-reset (+ 0.6 (* 0.4 (cos (* mod-sync-t (/ (* 2 (pi)) 30)))))))
 
 ;; amplitude modulation
-(def am (t) 0)
+(def am (is-reset mod-sync-t) 
+	(let ((sin-t (sin (* mod-sync-t (/ (* 2 (pi)) 30)))))
+		(* (max 0.1 (* sin-t sin-t)) (rhythm is-reset 0.6))))
 
-(def column (t) 0)
 
-(def plane-wave (t) 0)
+;;;;;;;;;;;;;;;; -> other algorithms ;;;;;;;;;;;;;;;;
 
-(def avalanche (t) 0)
+(def column (is-reset mod-sync-t s-2)
+	(let* ((range-1 (1st (sonar-thresholds)))
+		   (range-3 (3rd (sonar-thresholds)))
+		   (is-audience (and (has-sonar) (>= s-2 range-1) (<= s-2 range-3)))
+		   (recv-b (any-hood (and (= 3 (port-number (nbr-angle))) (nbr is-audience))))
+		   (tim-1 (rep tim-1 0 (if is-reset 0 (+ tim-1 1))))
+		   (tim-2 (rep tim-2 20 (if is-reset 20 (max 20 (if recv-b 0 (+ tim-2 0.1)))))))
+		   (* (exp (neg tim-2)) (sin tim-1))))
+		   
+
+(def plane-wave (is-reset mod-sync-t s-2) 
+	(let* ((range-2 (2nd (sonar-thresholds)))
+		   (range-3 (3rd (sonar-thresholds)))
+		   (is-audience (and (has-sonar) (>= s-2 range-2) (<= s-2 range-3)))) 0))
 
 ;;;;;;;;;;;; main function ;;;;;;;;;;;;;;;
 
 ;; wall
 ;;
 ;; cycles through multiple programs
-;; ts: length 9 tuple of cycle times
+;; ts: tuple of cycle times (length 9)
 (def wall (ts) 
-	(let* ((t (timer))
-	      (sync-t (rep sync-t 0 (max (max-hood (nbr sync-t)) (+ sync-t (dt)))))
-		  (mod-sync-t (mod (floor sync-t) (elt ts (- (len ts) 1))))
-		  (s-3 (if (has-sonar) (running-triple-sum (sonar-value)) 0))
-		  (h-300 (heartbeat-300ms t))
-		  (disabled (polar-to-rect (tup 2 (neg (/ (pi) 2))))))
-	(if (> (elt ts 0) mod-sync-t) (servo-pos 0 (+ (/ (pi) 2) 
-		(sync-disorder mod-sync-t (elt ts 1) #f s-3 h-300)))
-	(if (> (elt ts 1) mod-sync-t) (servo-pos 0 (+ (/ (pi) 4) (fm mod-sync-t)))
-	(if (> (elt ts 2) mod-sync-t) (servo-pos 0 (+ (/ (pi) 2) (am mod-sync-t)))
-	(if (> (elt ts 3) mod-sync-t) disabled
-	(if (> (elt ts 4) mod-sync-t) (servo-pos 0 (+ (* (pi) (/ 75 180)) 
-		(sync-disorder mod-sync-t (elt ts 5) #t s-3 h-300)))
-	(if (> (elt ts 5) mod-sync-t) (servo-pos 0 (+ (/ (pi) 2) (column mod-sync-t)))
-	(if (> (elt ts 6) mod-sync-t) (servo-pos 0 (+ (/ (pi) 2) (plane-wave mod-sync-t)))
-	(if (> (elt ts 7) mod-sync-t) (servo-pos 0 (+ (/ (pi) 2) (avalanche mod-sync-t)))
-	disabled)))))))))
+	(let* ((cycle-length (elt ts (- (len ts) 1)))
+		   (mod-t 
+		   	(rep t 0 
+		   		(let ((new-t (+ t (dt)))) 
+		   			(if (< cycle-length new-t) (- new-t cycle-length) new-t))))
+		  (h-300 (heartbeat 0.3 mod-t cycle-length))
+		  (h-1000 (heartbeat 1 mod-t cycle-length))
+	      (mod-sync-t mod-t)
+		  (s-2 (if (has-sonar) (running-sum 2 (sonar-value)) 0))
+		  (s-3 (if (has-sonar) (running-sum 3 (sonar-value)) 0))
+		  (servo-disabled (polar-to-rect (tup 2 (neg (/ (pi) 2))))))
+		(if (> (elt ts 0) mod-sync-t) 
+			(servo-pos 0 (+ (/ (pi) 2) 
+				(sync-disorder 
+					(> 5 mod-sync-t) mod-sync-t (elt ts 1) #f s-3 h-300 h-1000)))
+		(if (> (elt ts 1) mod-sync-t) 
+			(servo-pos 0 (+ (/ (pi) 4) 
+				(fm (> 5 (- mod-sync-t (elt ts 0))) mod-sync-t)))
+		(if (> (elt ts 2) mod-sync-t) 
+			(servo-pos 0 (+ (/ (pi) 2) 
+				(am (> 5 (- mod-sync-t (elt ts 1))) mod-sync-t)))
+		(if (> (elt ts 3) mod-sync-t) 
+			servo-disabled
+		(if (> (elt ts 4) mod-sync-t) 
+			(servo-pos 0 (+ (* (pi) (/ 75 180)) 
+				(sync-disorder (> 5 (- mod-sync-t (elt ts 3))) 
+					mod-sync-t (elt ts 5) #t s-3 h-300 h-1000)))
+		(if (> (elt ts 5) mod-sync-t) 
+			(servo-pos 0 (+ (/ (pi) 2)
+				(column (> 5 (- mod-sync-t (elt ts 4))) mod-sync-t s-2)))
+		(if (> (elt ts 6) mod-sync-t)
+			(servo-pos 0 (+ (/ (pi) 2) 
+				(plane-wave (> 5 (- mod-sync-t (elt ts 5))) mod-sync-t s-2)))
+		(if (> (elt ts 7) mod-sync-t) 
+			(servo-pos 0 (+ (/ (pi) 2) 
+				(avalanche (> 5 (- mod-sync-t (elt ts 6))) mod-sync-t s-2 h-300 h-1000)))
+		servo-disabled))))))))))

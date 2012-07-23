@@ -1,0 +1,8 @@
+;; heartbeat function
+(def heartbeat (interval mod-t cycle-length)
+	(= mod-t (rep prev-t 0 
+		(let ((next-t (+ prev-t interval)))
+			(if (or (< cycle-length next-t) (> mod-t next-t)) mod-t prev-t)))))
+			
+;; testing
+;; proto -n 70 -c -DD hexgrid -T -l "(let* ((cycle-length 200) (mod-t (rep t 0 (let ((new-t (+ t (dt)))) (if (< cycle-length new-t) (- new-t cycle-length) new-t))))) (all (red (heartbeat 1 mod-t cycle-length)) (blue (heartbeat 0.3 mod-t cycle-length))))"
