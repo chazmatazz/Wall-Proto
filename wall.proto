@@ -140,57 +140,56 @@
 
 ;; enumeration of possible message destinations
 (def send-none () 0)
-(def send-2-3-4 () 1)
-(def send-2 () 2)
-(def send-4 () 3)
+(def send-1-2-3 () 1)
+(def send-1 () 2)
+(def send-3 () 3)
 
 ;; is a port in the specified destination set
-(def port-in-set (port send-set)
-	(if (= send-set (send-2-3-4))
-		(or (= port 2) (= port 3) (= port 4))
-		(if (= send-set (send-2))
-			(= port 2)
-			(if (= send-set (send-4))
-				(= port 4)
-				#f))))
+(def port-in-set (send-port send-set)
+	(or (and (= send-set (send-1-2-3)) 
+			(or (= send-port 1) (= send-port 2) (= send-port 3)))
+		(and (= send-set (send-1)) (= send-port 1))
+		(and (= send-set (send-3)) (= send-port 3))))
 
 ;; state is (send, x, y, a)
+;; nbr-state is (x, y)
 
 (def get-nbr-state (is-reset p-n state)
-	(let* ((init-nbr-state (tup (send-none) 0 0 0)))
-		(rep nbr-state init-nbr-state (if is-reset init-nbr-state 
-			(if (any-hood (and 
+	(let* ((init-nbr-state (tup 0 0)))
+		(rep nbr-state init-nbr-state (mux is-reset init-nbr-state 
+			(mux (any-hood (and 
 				(= p-n (port-number (nbr-angle)))
 				(port-in-set (pair-port p-n) (1st (nbr state)))))
 			(tup 
 		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (2nd (nbr state))))
-		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (3rd (nbr state))))
-		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (4th (nbr state)))))
+		 	(sum-hood (* (if (= p-n (port-number (nbr-angle))) 1 0) (3rd (nbr state)))))
 			nbr-state)))))
 
 (def rhythm (is-reset stp)
-	(let* ((init-state (tup (send-none) (if (is-bottom-left) 39 22) 40 40)))
-	(sin (4th (rep state
+	(let* 
+		((init-state (tup (send-none) (if (is-bottom-left) 39 22) 40 40))
+		(state (rep state
 		init-state
-		(if is-reset 
+		(mux is-reset 
 			init-state 
-		   	(if (is-bottom-left) 
+		   	(mux (is-bottom-left) 
 		   		(let* ((y (3rd state))
 		   			   (new-y (normalize-angle (+ y stp))))
-		   			(tup (send-2-3-4) (- y 1) new-y y))
-		   		(let* ((state-0 (get-nbr-state is-reset 0 state))
-		   			   (state-2 (get-nbr-state is-reset 2 state))
-		   			   (state-4 (get-nbr-state is-reset 4 state)))
-		   			   (if (not (= 0 (1st state-0)))
-		   			   		(let ((nbr-y (3rd state-0)))
-		   			   			(tup (send-2-3-4) (- nbr-y 1) nbr-y nbr-y))
-		   			   			(if (not (= 0 (1st state-2)))
-		   			   				(let ((nbr-x (2nd state-2))) 
-		   			   					(tup (send-4) (- nbr-x 1) (3rd state) nbr-x))
-		   			   				(if (not (= 0 (1st state-4))) 
-		   			   				(let ((nbr-x (2nd state-2)))
-		   			   					(tup (send-2) (- nbr-x 1) (3rd state) nbr-x))
-					   				(tup (send-none) (2nd state) (3rd state) 0))))))))))))
+		   			(tup (send-1-2-3) (- y 1) new-y y))
+		   		(let* ((nbr-state-4 (get-nbr-state is-reset 4 state))
+		   			   (nbr-state-5 (get-nbr-state is-reset 5 state))
+		   			   (nbr-state-0 (get-nbr-state is-reset 0 state)))
+		   			   (mux (not (= 0 (1st nbr-state-5)))
+		   			   		(let ((nbr-y (2nd nbr-state-5)))
+		   			   			(tup (send-1-2-3) (- nbr-y 1) nbr-y nbr-y))
+		   			   			(mux (not (= 0 (1st nbr-state-0)))
+		   			   				(let ((nbr-x (1st nbr-state-0))) 
+		   			   					(tup (send-1) (- nbr-x 1) (3rd state) nbr-x))
+		   			   				(mux (not (= 0 (1st nbr-state-4))) 
+		   			   				(let ((nbr-x (1st nbr-state-4)))
+		   			   					(tup (send-3) (- nbr-x 1) (3rd state) nbr-x))
+					   				(tup (send-none) (2nd state) (3rd state) 0))))))))))
+	(sin (4th state))))
 		
 ;; frequency modulation
 (def fm (is-reset mod-sync-t)

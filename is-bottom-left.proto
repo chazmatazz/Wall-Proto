@@ -1,6 +1,6 @@
 ;; is bottom left in hex layout
 (def is-bottom-left () 
-	(all-hood (or (= 2 (port-number (nbr-angle))) (= 3 (port-number (nbr-angle))))))
+	(all-hood (let ((p (port-number (nbr-angle)))) (or (= 2 p) (= 3 p)))))
 	
 ;; testing
 ;; proto -n 70 -c -DD hexgrid -T -l "(blue (is-bottom-left))"
